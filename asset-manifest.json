@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/market-terminal/static/css/main.082156e2.css",
+    "main.js": "/market-terminal/static/js/main.76e98b1d.js",
+    "index.html": "/market-terminal/index.html",
+    "main.082156e2.css.map": "/market-terminal/static/css/main.082156e2.css.map",
+    "main.76e98b1d.js.map": "/market-terminal/static/js/main.76e98b1d.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.082156e2.css",
+    "static/js/main.76e98b1d.js"
+  ]
+}
