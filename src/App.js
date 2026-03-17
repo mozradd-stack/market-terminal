@@ -30,6 +30,7 @@ function App() {
   const [ticker, setTicker] = useState(null);
   const [watchlist, setWatchlist] = useState([]);
   const [globalData, setGlobalData] = useState(null);
+  const [prevGlobalData, setPrevGlobalData] = useState(null);
   const [fearGreed, setFearGreed] = useState(null);
   const [news, setNews] = useState([]);
   const [topMovers, setTopMovers] = useState({ gainers: [], losers: [] });
@@ -58,12 +59,14 @@ function App() {
     } catch (e) { console.error('Watchlist:', e); }
   }, []);
 
-  // Global market stats
+  // Global market stats (track previous snapshot for Macro signals)
   const fetchGlobal = useCallback(async () => {
     try {
       const res = await fetch(`${COINGECKO}/global`);
       const data = await res.json();
-      if (data?.data) setGlobalData(data.data);
+      if (data?.data) {
+        setGlobalData(prev => { setPrevGlobalData(prev); return data.data; });
+      }
     } catch (e) { console.error('Global:', e); }
   }, []);
 
@@ -76,12 +79,14 @@ function App() {
     } catch (e) { console.error('FNG:', e); }
   }, []);
 
-  // News
+  // News — primary: CryptoCompare, fallback: CoinGecko news
   const fetchNews = useCallback(async () => {
     try {
-      const res = await fetch('https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=latest');
+      const res = await fetch('https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=latest&extraParams=MarketTerminal');
+      if (!res.ok) throw new Error(`CC status ${res.status}`);
       const data = await res.json();
-      const articles = (data.Data || []).slice(0, 20).map(item => ({
+      if (!data.Data?.length) throw new Error('Empty');
+      const articles = data.Data.slice(0, 20).map(item => ({
         title: item.title,
         url: item.url,
         source: item.source_info?.name || item.source,
@@ -90,7 +95,22 @@ function App() {
         body: item.body?.substring(0, 200),
       }));
       setNews(articles);
-    } catch (e) { console.error('News:', e); }
+    } catch {
+      // Fallback: CoinGecko news
+      try {
+        const res2 = await fetch('https://api.coingecko.com/api/v3/news?per_page=20');
+        const data2 = await res2.json();
+        const articles2 = (data2?.data || []).slice(0, 20).map(item => ({
+          title: item.title,
+          url: item.url,
+          source: item.author?.name || 'CoinGecko',
+          published: Math.floor(new Date(item.created_at).getTime() / 1000),
+          imageUrl: item.thumb_2x || item.thumb,
+          body: item.description?.substring(0, 200),
+        }));
+        if (articles2.length) setNews(articles2);
+      } catch (e2) { console.error('News fallback failed:', e2); }
+    }
   }, []);
 
   useEffect(() => { fetchWatchlist(); const t = setInterval(fetchWatchlist, 30000); return () => clearInterval(t); }, [fetchWatchlist]);
@@ -208,7 +228,9 @@ function App() {
                 fearGreedValue={fearGreed ? parseInt(fearGreed.value) : null}
                 fearGreedPrev={fearGreed?.history?.[1] ? parseInt(fearGreed.history[1].value) : null}
                 btcDominance={globalData?.market_cap_percentage?.btc ?? null}
+                btcDominancePrev={prevGlobalData?.market_cap_percentage?.btc ?? null}
                 globalMarketCap={globalData?.total_market_cap?.usd ?? null}
+                globalMarketCapPrev={prevGlobalData?.total_market_cap?.usd ?? null}
                 onSymbolSelect={handleSymbolSelect}
               />
             )}

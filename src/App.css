@@ -1053,6 +1053,24 @@ a:hover { text-decoration: underline; }
 .bias-refresh:hover { color: var(--text1); }
 .bias-refresh:disabled { opacity: 0.4; cursor: default; }
 
+/* ─── Seasonality Group ─────────────────────────────────────────────────── */
+.sig-season-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-left: 1px solid var(--border);
+  padding-left: 8px;
+  margin-right: 4px;
+}
+.sig-season-label {
+  font-size: 9px;
+  color: var(--text3);
+  margin-right: 3px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
 /* ─── Responsive tweaks ────────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .terminal-body { grid-template-columns: 180px 1fr 260px; }

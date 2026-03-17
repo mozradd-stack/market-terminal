@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { runSignalEngine, CRYPTO_PAIRS, FOREX_PAIRS, CATEGORIES } from '../utils/signalEngine';
+import { runSignalEngine, CRYPTO_PAIRS, FOREX_PAIRS, FUTURES_PAIRS, CATEGORIES } from '../utils/signalEngine';
 
 const TIMEFRAMES = [
   { label: '15m', value: '15m' },
@@ -92,29 +92,35 @@ function SignalRow({ signal }) {
   );
 }
 
-// ─── Helper: Forex OHLCV via Frankfurter (direct browser call) ─────────────
-async function fetchForexOHLCV(symbol) {
-  const base = symbol.substring(0, 3);
-  const quote = symbol.substring(3, 6);
-  const endDate = new Date().toISOString().split('T')[0];
-  const startDate = new Date(Date.now() - 600 * 86400000).toISOString().split('T')[0];
-  const res = await fetch(`https://api.frankfurter.app/${startDate}..${endDate}?from=${base}&to=${quote}`);
+// ─── Yahoo Finance OHLCV (Forex, Futures, Indices) ──────────────────────────
+// Supports: EURUSD=X (spot forex), 6E=F (CME futures), etc.
+async function fetchYahooOHLCV(symbol, tf = '1d') {
+  // Map SignalDashboard timeframes → Yahoo Finance intervals + ranges
+  const intervalMap = { '15m': '15m', '1h': '1h', '4h': '1h', '1d': '1d', '1w': '1wk' };
+  const rangeMap   = { '15m': '7d',  '1h': '60d', '4h': '60d', '1d': '2y', '1w': '5y' };
+  const interval = intervalMap[tf] || '1d';
+  const range    = rangeMap[tf]    || '2y';
+
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}` +
+              `?interval=${interval}&range=${range}&includeTimestamps=true`;
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  if (!res.ok) throw new Error(`Yahoo Finance HTTP ${res.status} for ${symbol}`);
   const data = await res.json();
-  const rates = data.rates || {};
-  const dates = Object.keys(rates).sort();
-  return dates.map((date, i) => {
-    const rate = rates[date][quote];
-    const prevRate = i > 0 ? rates[dates[i - 1]][quote] : rate;
-    const v = Math.abs(rate - prevRate) * 0.3;
-    return {
-      time: new Date(date).getTime(),
-      open: prevRate,
-      high: Math.max(rate, prevRate) + v,
-      low: Math.min(rate, prevRate) - v,
-      close: rate,
-      volume: 1000000 + Math.random() * 500000,
-    };
-  });
+  const result = data?.chart?.result?.[0];
+  if (!result) throw new Error(`No Yahoo Finance data for ${symbol}`);
+
+  const ts  = result.timestamp || [];
+  const q   = result.indicators.quote[0];
+  return ts
+    .map((t, i) => ({
+      time:   t * 1000,
+      open:   q.open[i]  ?? q.close[i],
+      high:   q.high[i]  ?? q.close[i],
+      low:    q.low[i]   ?? q.close[i],
+      close:  q.close[i],
+      volume: q.volume[i] ?? 0,
+    }))
+    .filter(c => c.close != null && !isNaN(c.close));
 }
 
 // ─── Main Dashboard ────────────────────────────────────────────────────────
@@ -133,8 +139,9 @@ export default function SignalDashboard({ fearGreedValue, fearGreedPrev, btcDomi
   const [fundingRate, setFundingRate] = useState(null);
   const [longShortRatio, setLongShortRatio] = useState(null);
   const [marketCap, setMarketCap] = useState(null);
+  const [seasonYears, setSeasonYears] = useState('all'); // '1'|'2'|'3'|'5'|'all'
 
-  const assets = assetType === 'crypto' ? CRYPTO_PAIRS : FOREX_PAIRS;
+  const assets = assetType === 'crypto' ? CRYPTO_PAIRS : assetType === 'futures' ? FUTURES_PAIRS : FOREX_PAIRS;
 
   // Fetch Binance futures sentiment data for crypto
   useEffect(() => {
@@ -172,10 +179,17 @@ export default function SignalDashboard({ fearGreedValue, fearGreedPrev, btcDomi
           volume: parseFloat(k[5]),
         }));
       } else {
-        ohlcv = await fetchForexOHLCV(symbol);
+        // forex: EURUSD → EURUSD=X | futures: 6E=F already correct
+        const yhSym = assetType === 'futures' ? symbol : symbol + '=X';
+        ohlcv = await fetchYahooOHLCV(yhSym, tf);
       }
 
       if (ohlcv.length < 50) throw new Error('Not enough data');
+      // Saisonalitäts-Lookback: Candles pro Jahr abhängig vom Timeframe
+      const candlesPerYear = { '15m': 35040, '1h': 8760, '4h': 2190, '1d': 365, '1w': 52 };
+      const cpy = candlesPerYear[tf] || 365;
+      const seasonalityLookback = seasonYears === 'all' ? null : parseInt(seasonYears) * cpy;
+
       const engineResult = runSignalEngine(ohlcv, {
         fearGreedValue: fearGreedValue ? parseInt(fearGreedValue) : null,
         fearGreedPrev: fearGreedPrev ? parseInt(fearGreedPrev) : null,
@@ -187,6 +201,7 @@ export default function SignalDashboard({ fearGreedValue, fearGreedPrev, btcDomi
         globalMarketCapPrev,
         marketCap,
         assetType,
+        seasonalityLookback,
       });
       setResults(engineResult);
     } catch (e) {
@@ -203,7 +218,7 @@ export default function SignalDashboard({ fearGreedValue, fearGreedPrev, btcDomi
   // Scanner: run engine on all assets
   const runScan = useCallback(async () => {
     setScanning(true);
-    const scanList = assetType === 'crypto' ? CRYPTO_PAIRS : FOREX_PAIRS;
+    const scanList = assetType === 'crypto' ? CRYPTO_PAIRS : assetType === 'futures' ? FUTURES_PAIRS : FOREX_PAIRS;
     const results = [];
 
     for (const asset of scanList) {
@@ -220,7 +235,8 @@ export default function SignalDashboard({ fearGreedValue, fearGreedPrev, btcDomi
             low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]),
           }));
         } else {
-          ohlcv = await fetchForexOHLCV(asset.symbol);
+          const yhSym = assetType === 'futures' ? asset.symbol : asset.symbol + '=X';
+          ohlcv = await fetchYahooOHLCV(yhSym, timeframe);
         }
 
         if (ohlcv.length < 50) continue;
@@ -286,8 +302,9 @@ export default function SignalDashboard({ fearGreedValue, fearGreedPrev, btcDomi
         <div className="sig-controls-left">
           {/* Asset Type Toggle */}
           <div className="sig-toggle">
-            <button className={assetType === 'crypto' ? 'active' : ''} onClick={() => { setAssetType('crypto'); setSelectedAsset('BTCUSDT'); }}>Crypto</button>
-            <button className={assetType === 'forex' ? 'active' : ''} onClick={() => { setAssetType('forex'); setSelectedAsset('EURUSD'); }}>Forex</button>
+            <button className={assetType === 'crypto'  ? 'active' : ''} onClick={() => { setAssetType('crypto');  setSelectedAsset('BTCUSDT'); setScanResults([]); }}>Crypto</button>
+            <button className={assetType === 'forex'   ? 'active' : ''} onClick={() => { setAssetType('forex');   setSelectedAsset('EURUSD');  setScanResults([]); }}>Forex</button>
+            <button className={assetType === 'futures' ? 'active' : ''} onClick={() => { setAssetType('futures'); setSelectedAsset('6E=F');    setScanResults([]); }}>Futures</button>
           </div>
 
           {/* Asset Selector */}
@@ -316,6 +333,18 @@ export default function SignalDashboard({ fearGreedValue, fearGreedPrev, btcDomi
         </div>
 
         <div className="sig-controls-right">
+          {/* Saisonalitäts-Zeitraum */}
+          <div className="sig-season-group" title="Saisonalitäts-Lookback">
+            <span className="sig-season-label">Season:</span>
+            {[['1','1J'], ['2','2J'], ['3','3J'], ['5','5J'], ['all','Max']].map(([v, l]) => (
+              <button
+                key={v}
+                className={`tf-btn ${seasonYears === v ? 'active' : ''}`}
+                onClick={() => setSeasonYears(v)}
+              >{l}</button>
+            ))}
+          </div>
+
           <button className={`sig-scan-btn ${scanMode ? 'active' : ''}`} onClick={() => setScanMode(!scanMode)}>
             {scanMode ? 'Single' : 'Scanner'}
           </button>

@@ -730,7 +730,9 @@ const EXTRA_SIGNAL_DEFS = [
     const closes = d.closes;
     const times = d.times;
     if (!times || times.length < 20) return { signal: NEUTRAL, value: 0 };
-    for (let i = 1; i < Math.min(closes.length, 200); i++) {
+    const limit = d.seasonalityLookback ? Math.min(closes.length, d.seasonalityLookback) : closes.length;
+    const start = Math.max(1, closes.length - limit);
+    for (let i = start; i < closes.length; i++) {
       const day = new Date(times[i]).getDay();
       const ret = (closes[i] - closes[i-1]) / closes[i-1];
       dayReturns[day] += ret;
@@ -747,7 +749,9 @@ const EXTRA_SIGNAL_DEFS = [
     const closes = d.closes;
     const times = d.times;
     if (!times || times.length < 60) return { signal: NEUTRAL, value: 0 };
-    for (let i = 1; i < closes.length; i++) {
+    const limit = d.seasonalityLookback ? Math.min(closes.length, d.seasonalityLookback) : closes.length;
+    const start = Math.max(1, closes.length - limit);
+    for (let i = start; i < closes.length; i++) {
       const month = new Date(times[i]).getMonth();
       const ret = (closes[i] - closes[i-1]) / closes[i-1];
       monthReturns[month] += ret;
@@ -863,6 +867,7 @@ export function runSignalEngine(ohlcvData, extraData = {}) {
     marketCap = null,
     fearGreedPrev = null,
     assetType = 'crypto',
+    seasonalityLookback = null,   // max candles used for seasonal pattern analysis
   } = typeof extraData === 'object' ? extraData : {};
 
   const d = {
@@ -882,6 +887,7 @@ export function runSignalEngine(ohlcvData, extraData = {}) {
     globalMarketCapPrev,
     marketCap,
     assetType,
+    seasonalityLookback,
   };
 
   const results = ALL_SIGNAL_DEFS.map(def => {
@@ -966,21 +972,54 @@ export const CRYPTO_PAIRS = [
 ];
 
 export const FOREX_PAIRS = [
-  { symbol: 'EURUSD', name: 'Euro/US Dollar', base: 'EUR', quote: 'USD' },
-  { symbol: 'GBPUSD', name: 'Pound/US Dollar', base: 'GBP', quote: 'USD' },
-  { symbol: 'USDJPY', name: 'Dollar/Yen', base: 'USD', quote: 'JPY' },
-  { symbol: 'USDCHF', name: 'Dollar/Swiss', base: 'USD', quote: 'CHF' },
-  { symbol: 'AUDUSD', name: 'Aussie/US Dollar', base: 'AUD', quote: 'USD' },
-  { symbol: 'NZDUSD', name: 'Kiwi/US Dollar', base: 'NZD', quote: 'USD' },
-  { symbol: 'USDCAD', name: 'Dollar/Loonie', base: 'USD', quote: 'CAD' },
-  { symbol: 'EURGBP', name: 'Euro/Pound', base: 'EUR', quote: 'GBP' },
-  { symbol: 'EURJPY', name: 'Euro/Yen', base: 'EUR', quote: 'JPY' },
-  { symbol: 'GBPJPY', name: 'Pound/Yen', base: 'GBP', quote: 'JPY' },
-  { symbol: 'EURCHF', name: 'Euro/Swiss', base: 'EUR', quote: 'CHF' },
-  { symbol: 'AUDJPY', name: 'Aussie/Yen', base: 'AUD', quote: 'JPY' },
-  { symbol: 'EURAUD', name: 'Euro/Aussie', base: 'EUR', quote: 'AUD' },
-  { symbol: 'GBPAUD', name: 'Pound/Aussie', base: 'GBP', quote: 'AUD' },
-  { symbol: 'GBPCHF', name: 'Pound/Swiss', base: 'GBP', quote: 'CHF' },
+  // ─── Majors (vs USD) ───────────────────────────────────────────────────────
+  { symbol: 'EURUSD', name: 'Euro / US Dollar',      base: 'EUR', quote: 'USD' },
+  { symbol: 'GBPUSD', name: 'Pound / US Dollar',     base: 'GBP', quote: 'USD' },
+  { symbol: 'AUDUSD', name: 'Aussie / US Dollar',    base: 'AUD', quote: 'USD' },
+  { symbol: 'NZDUSD', name: 'Kiwi / US Dollar',      base: 'NZD', quote: 'USD' },
+  { symbol: 'USDJPY', name: 'US Dollar / Yen',       base: 'USD', quote: 'JPY' },
+  { symbol: 'USDCHF', name: 'US Dollar / Swiss',     base: 'USD', quote: 'CHF' },
+  { symbol: 'USDCAD', name: 'US Dollar / Loonie',    base: 'USD', quote: 'CAD' },
+  // ─── EUR Crosses ───────────────────────────────────────────────────────────
+  { symbol: 'EURGBP', name: 'Euro / Pound',          base: 'EUR', quote: 'GBP' },
+  { symbol: 'EURJPY', name: 'Euro / Yen',            base: 'EUR', quote: 'JPY' },
+  { symbol: 'EURCHF', name: 'Euro / Swiss',          base: 'EUR', quote: 'CHF' },
+  { symbol: 'EURAUD', name: 'Euro / Aussie',         base: 'EUR', quote: 'AUD' },
+  { symbol: 'EURCAD', name: 'Euro / Loonie',         base: 'EUR', quote: 'CAD' },
+  { symbol: 'EURNZD', name: 'Euro / Kiwi',           base: 'EUR', quote: 'NZD' },
+  // ─── GBP Crosses ───────────────────────────────────────────────────────────
+  { symbol: 'GBPJPY', name: 'Pound / Yen',           base: 'GBP', quote: 'JPY' },
+  { symbol: 'GBPCHF', name: 'Pound / Swiss',         base: 'GBP', quote: 'CHF' },
+  { symbol: 'GBPAUD', name: 'Pound / Aussie',        base: 'GBP', quote: 'AUD' },
+  { symbol: 'GBPCAD', name: 'Pound / Loonie',        base: 'GBP', quote: 'CAD' },
+  { symbol: 'GBPNZD', name: 'Pound / Kiwi',          base: 'GBP', quote: 'NZD' },
+  // ─── AUD Crosses ───────────────────────────────────────────────────────────
+  { symbol: 'AUDJPY', name: 'Aussie / Yen',          base: 'AUD', quote: 'JPY' },
+  { symbol: 'AUDCHF', name: 'Aussie / Swiss',        base: 'AUD', quote: 'CHF' },
+  { symbol: 'AUDCAD', name: 'Aussie / Loonie',       base: 'AUD', quote: 'CAD' },
+  { symbol: 'AUDNZD', name: 'Aussie / Kiwi',         base: 'AUD', quote: 'NZD' },
+  // ─── NZD Crosses ───────────────────────────────────────────────────────────
+  { symbol: 'NZDJPY', name: 'Kiwi / Yen',            base: 'NZD', quote: 'JPY' },
+  { symbol: 'NZDCHF', name: 'Kiwi / Swiss',          base: 'NZD', quote: 'CHF' },
+  { symbol: 'NZDCAD', name: 'Kiwi / Loonie',         base: 'NZD', quote: 'CAD' },
+  // ─── CAD Crosses ───────────────────────────────────────────────────────────
+  { symbol: 'CADJPY', name: 'Loonie / Yen',          base: 'CAD', quote: 'JPY' },
+  { symbol: 'CADCHF', name: 'Loonie / Swiss',        base: 'CAD', quote: 'CHF' },
+  // ─── CHF Cross ─────────────────────────────────────────────────────────────
+  { symbol: 'CHFJPY', name: 'Swiss / Yen',           base: 'CHF', quote: 'JPY' },
+];
+
+// ─── CME Currency Futures ────────────────────────────────────────────────────
+// Yahoo Finance tickers: 6E=F (EUR), 6B=F (GBP), 6J=F (JPY), 6S=F (CHF),
+//                        6A=F (AUD), 6C=F (CAD), 6N=F (NZD)
+export const FUTURES_PAIRS = [
+  { symbol: '6E=F',  name: 'Euro FX Futures',        base: 'EUR', quote: 'USD' },
+  { symbol: '6B=F',  name: 'British Pound Futures',   base: 'GBP', quote: 'USD' },
+  { symbol: '6A=F',  name: 'Australian Dollar Futures',base: 'AUD', quote: 'USD' },
+  { symbol: '6N=F',  name: 'NZ Dollar Futures',       base: 'NZD', quote: 'USD' },
+  { symbol: '6J=F',  name: 'Japanese Yen Futures',    base: 'JPY', quote: 'USD' },
+  { symbol: '6S=F',  name: 'Swiss Franc Futures',     base: 'CHF', quote: 'USD' },
+  { symbol: '6C=F',  name: 'Canadian Dollar Futures', base: 'CAD', quote: 'USD' },
 ];
 
 export const CATEGORIES = [
