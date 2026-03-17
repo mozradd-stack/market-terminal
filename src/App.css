@@ -927,6 +927,132 @@ a:hover { text-decoration: underline; }
 .sig-scanner-sym strong { color: var(--text1); font-size: 12px; }
 .sig-scanner-sym small { display: block; color: var(--text3); font-size: 10px; }
 
+/* ─── Bias Meter ───────────────────────────────────────────────────────────── */
+.bias-meter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 14px;
+  background: var(--bias-bg, rgba(240,185,11,0.08));
+  border-bottom: 1px solid var(--bias-color, var(--yellow));
+  border-bottom-width: 2px;
+  flex-shrink: 0;
+}
+
+.bias-loading {
+  color: var(--text3);
+  font-size: 11px;
+  gap: 8px;
+  background: var(--bg1);
+  border-bottom-color: var(--border);
+}
+
+.bias-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--bg3);
+  border-top-color: var(--yellow);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.bias-label-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 120px;
+}
+
+.bias-icon {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: -2px;
+}
+
+.bias-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.bias-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bias-bar-track {
+  position: relative;
+  height: 6px;
+  background: var(--bg3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bias-bar-center {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--text3);
+  opacity: 0.5;
+}
+
+.bias-bar-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease, left 0.4s ease;
+}
+
+.bias-score-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+}
+
+.bias-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.bias-score {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.bias-total {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+}
+
+.bias-refresh {
+  margin-left: 6px;
+  color: var(--text3);
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  background: var(--bg3);
+  transition: color 0.15s;
+}
+
+.bias-refresh:hover { color: var(--text1); }
+.bias-refresh:disabled { opacity: 0.4; cursor: default; }
+
 /* ─── Responsive tweaks ────────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .terminal-body { grid-template-columns: 180px 1fr 260px; }

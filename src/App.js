@@ -9,6 +9,7 @@ import FearGreed from './components/FearGreed';
 import TopMovers from './components/TopMovers';
 import NewsWidget from './components/NewsWidget';
 import SignalDashboard from './components/SignalDashboard';
+import BiasMeter from './components/BiasMeter';
 import './App.css';
 
 const COINGECKO = 'https://api.coingecko.com/api/v3';
@@ -196,7 +197,12 @@ function App() {
 
           {/* Main Content */}
           <div className="center-content">
-            {activeTab === 'chart' && <Chart symbol={selectedSymbol} />}
+            {activeTab === 'chart' && (
+              <>
+                <BiasMeter symbol={selectedSymbol} timeframe="1h" />
+                <Chart symbol={selectedSymbol} />
+              </>
+            )}
             {activeTab === 'signals' && (
               <SignalDashboard
                 fearGreedValue={fearGreed ? parseInt(fearGreed.value) : null}
